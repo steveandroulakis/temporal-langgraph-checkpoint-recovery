@@ -12,7 +12,7 @@ It is adapted from a TypeScript example and demonstrates the following scenarios
 - **API downtime** – start with `--inventory-down` to simulate a failing inventory service.
 - **Invalid order troubleshooting** – use `--expiry 12/23` to trigger an invalid credit card.
 - **Human in the loop** – send the `approve_order` signal to continue processing.
-- **Approve or expire order** – workflow waits 10s for approval before expiring.
+- **Approve or expire order** – workflow waits 30s for approval before expiring.
 - **Bug in workflow** – uncomment the line in `order_fulfillment/workflow.py` that raises `RuntimeError`.
 
 ## Project Structure
@@ -111,7 +111,7 @@ wait $START_PID
 
 ### Additional scenarios
 
-- **Order expires:** start the workflow and do not send the signal. After ~10s it returns `Order expired`.
+- **Order expires:** start the workflow and do not send the signal. After ~30s it returns `Order expired`.
 - **Inventory API down:**
   ```bash
   uv run scripts/starter.py --inventory-down
