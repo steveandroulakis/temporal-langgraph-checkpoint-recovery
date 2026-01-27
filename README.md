@@ -33,8 +33,6 @@ temporal-order-fulfill-python/
 │   ├── starter.py            # Workflow starter
 │   ├── starter_checkpoint_demo.py  # Checkpoint demo starter
 │   └── signal_approve.py     # Signal sender
-├── docs/                     # Documentation
-│   └── heartbeat-checkpoint-scenario.md
 ├── tests/                    # Test suite
 │   ├── __init__.py
 │   └── test_shared.py
@@ -144,8 +142,6 @@ Stop both workers with Ctrl+C in their respective terminals.
 ## Heartbeat Checkpoint Demo
 
 This demo shows how long-running activities can save progress checkpoints via heartbeats and resume from where they left off after a worker failure.
-
-See [docs/heartbeat-checkpoint-scenario.md](docs/heartbeat-checkpoint-scenario.md) for detailed walkthrough.
 
 ### Quick Start
 

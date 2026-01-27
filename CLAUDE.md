@@ -131,4 +131,5 @@ This is a Temporal workflow application demonstrating order fulfillment with fou
 - **Type Checking**: Strict mypy configuration enabled
 - **Code Quality**: Ruff for linting and formatting
 - **Heartbeat Timeout**: 30 seconds (pack_order_items activity)
-- **Checkpoint Interval**: Per-item (SDK throttles to 80% of heartbeat_timeout)
+- **Background Heartbeat Interval**: 5 seconds (keeps activity alive during long item processing)
+- **Checkpoint Update**: Immediate after each item completes

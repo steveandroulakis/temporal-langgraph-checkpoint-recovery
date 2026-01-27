@@ -51,13 +51,15 @@ async def deliver_order(order: Order) -> str:
 async def pack_order_items(items: list[str]) -> str:
     """Pack items with heartbeat checkpointing for recovery on failure.
 
-    Heartbeats after every item. SDK throttles transmission automatically
-    (default 30s or 80% of heartbeat_timeout, whichever is smaller).
-    Most recent checkpoint is always sent on failure, so progress is preserved.
+    Uses a background heartbeat task to ensure heartbeats continue even if
+    individual items take longer than expected. Checkpoints are updated after
+    each item completes, and the background task sends the latest checkpoint
+    every 5 seconds.
     """
     info = activity.info()
     total_items = len(items)
     start_idx = 0
+    checkpoint: PackingCheckpoint | None = None
 
     # Resume from checkpoint if available (deserializes as dict with default converter)
     if info.heartbeat_details:
@@ -71,18 +73,34 @@ async def pack_order_items(items: list[str]) -> str:
             f"last_item={checkpoint.last_item_sku}"
         )
 
-    for idx in range(start_idx, total_items):
-        sku = items[idx]
-        # Simulate packing work (~10s per item, 30 items = 5 min total)
-        await asyncio.sleep(10)
+    # Background heartbeat task - sends latest checkpoint every 5s
+    async def heartbeat_loop() -> None:
+        while True:
+            await asyncio.sleep(5)
+            if checkpoint:
+                activity.heartbeat(checkpoint)
 
-        progress_pct = ((idx + 1) / total_items) * 100
-        activity.logger.info(
-            f"Packed {sku} ({idx + 1}/{total_items}, {progress_pct:.1f}%)"
-        )
+    heartbeat_task = asyncio.create_task(heartbeat_loop())
+    try:
+        for idx in range(start_idx, total_items):
+            sku = items[idx]
+            # Simulate packing work (~10s per item, 30 items = 5 min total)
+            await asyncio.sleep(10)
 
-        # Heartbeat with checkpoint after every item - SDK throttles automatically
-        checkpoint = PackingCheckpoint(last_processed_idx=idx, last_item_sku=sku)
-        activity.heartbeat(checkpoint)
+            progress_pct = ((idx + 1) / total_items) * 100
+            activity.logger.info(
+                f"Packed {sku} ({idx + 1}/{total_items}, {progress_pct:.1f}%)"
+            )
+
+            # Update checkpoint and send immediately
+            checkpoint = PackingCheckpoint(last_processed_idx=idx, last_item_sku=sku)
+            activity.heartbeat(checkpoint)
+            activity.logger.info(f"Checkpoint saved at idx={idx}")
+    finally:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
 
     return f"Packed {total_items} items"
