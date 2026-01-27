@@ -15,7 +15,7 @@ It demonstrates the following scenarios:
 - **Human in the loop** – send the `approve_order` signal to continue processing.
 - **Approve or expire order** – workflow waits 30s for approval before expiring.
 - **Bug in workflow** – uncomment the line in `order_fulfillment/workflow.py` that raises `RuntimeError`.
-- **Heartbeat checkpointing** – demonstrates activity recovery from worker failure using checkpoint data.
+- **Heartbeat checkpointing** – demonstrates activity recovery from worker failure using checkpoint data, including persisting external IDs (e.g., packing slip) across retries.
 
 ## Project Structure
 
@@ -154,11 +154,12 @@ uv run scripts/starter_checkpoint_demo.py
 ### Demo Flow
 
 1. Watch Terminal 2 (activity worker) for packing progress logs
-2. After seeing a few "Packed SKU-XXX" messages, kill the activity worker (Ctrl+C)
-3. Wait ~30 seconds for heartbeat timeout
-4. Restart the activity worker: `uv run scripts/worker_activity.py`
-5. Observe "Resuming from checkpoint" - activity continues from last checkpoint
-6. Send approval signal when prompted: `uv run scripts/signal_approve.py <workflow-id>`
+2. Note the `packing_slip_id` in the "Acquired new packing slip ID" log message
+3. After seeing a few "Packed SKU-XXX" messages, kill the activity worker (Ctrl+C)
+4. Wait ~30 seconds for heartbeat timeout
+5. Restart the activity worker: `uv run scripts/worker_activity.py`
+6. Observe "Resuming from checkpoint" with the **same** `packing_slip_id` - activity continues from last checkpoint
+7. Send approval signal when prompted: `uv run scripts/signal_approve.py <workflow-id>`
 
 ### Implementation Notes
 
@@ -168,7 +169,35 @@ The `pack_order_items` activity uses a dual heartbeat strategy:
 
 This handles real-world scenarios where item processing time varies unpredictably.
 
+#### Persisting External IDs Across Retries
+
+The activity demonstrates a critical pattern: **acquiring an external ID at startup and persisting it via heartbeat**.
+
+On first run, the activity generates a `packing_slip_id` (simulating an external API call) and heartbeats it immediately—before processing any items. On retry, this ID is recovered from the checkpoint and reused.
+
+```python
+# If resuming, reuse the existing packing slip ID
+if checkpoint and checkpoint.packing_slip_id:
+    packing_slip_id = checkpoint.packing_slip_id
+else:
+    # First attempt: acquire ID and heartbeat immediately
+    packing_slip_id = generate_packing_slip_id()
+    activity.heartbeat(PackingCheckpoint(
+        last_processed_idx=-1,
+        last_item_sku="not_started",
+        packing_slip_id=packing_slip_id
+    ))
+```
+
+This pattern is essential when your activity:
+- Calls an external API that returns a resource ID (shipping label, transaction ID, etc.)
+- Creates a record in an external system
+- Needs idempotency across retries
+
+Without this, a worker crash would cause the activity to call the external API again on retry, potentially creating duplicate resources.
+
 When running the demo:
 - Activity resumes from `last_processed_idx + 1`, skipping already-packed items
+- The same `packing_slip_id` is used across retries (visible in logs)
 - `attempt: 2` in logs indicates this is a retry
 - Temporal UI shows `ActivityTaskTimedOut` with `HEARTBEAT` timeout type

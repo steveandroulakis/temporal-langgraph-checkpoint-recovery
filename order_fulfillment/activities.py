@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import uuid
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
@@ -59,7 +60,7 @@ async def pack_order_items(items: list[str]) -> str:
     info = activity.info()
     total_items = len(items)
     start_idx = 0
-    checkpoint: PackingCheckpoint | None = None
+    packing_slip_id: str | None = None
 
     # Resume from checkpoint if available (deserializes as dict with default converter)
     if info.heartbeat_details:
@@ -68,10 +69,21 @@ async def pack_order_items(items: list[str]) -> str:
             raw if isinstance(raw, PackingCheckpoint) else PackingCheckpoint(**raw)
         )
         start_idx = checkpoint.last_processed_idx + 1
+        packing_slip_id = checkpoint.packing_slip_id
         activity.logger.info(
             f"Resuming from checkpoint idx={checkpoint.last_processed_idx}, "
-            f"last_item={checkpoint.last_item_sku}"
+            f"last_item={checkpoint.last_item_sku}, slip_id={packing_slip_id}"
         )
+
+    # Acquire packing slip ID if not resuming (simulates external API call)
+    if not packing_slip_id:
+        packing_slip_id = f"SLIP-{uuid.uuid4().hex[:8].upper()}"
+        activity.logger.info(f"Acquired new packing slip ID: {packing_slip_id}")
+        # Heartbeat immediately to persist the ID before doing any work
+        checkpoint = PackingCheckpoint(
+            last_processed_idx=-1, last_item_sku="not_started", packing_slip_id=packing_slip_id
+        )
+        activity.heartbeat(checkpoint)
 
     # Background heartbeat task - sends latest checkpoint every 5s
     async def heartbeat_loop() -> None:
@@ -93,7 +105,9 @@ async def pack_order_items(items: list[str]) -> str:
             )
 
             # Update checkpoint and send immediately
-            checkpoint = PackingCheckpoint(last_processed_idx=idx, last_item_sku=sku)
+            checkpoint = PackingCheckpoint(
+                last_processed_idx=idx, last_item_sku=sku, packing_slip_id=packing_slip_id
+            )
             activity.heartbeat(checkpoint)
             activity.logger.info(f"Checkpoint saved at idx={idx}")
     finally:
@@ -103,4 +117,4 @@ async def pack_order_items(items: list[str]) -> str:
         except asyncio.CancelledError:
             pass
 
-    return f"Packed {total_items} items"
+    return f"Packed {total_items} items (slip: {packing_slip_id})"

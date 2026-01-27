@@ -14,3 +14,4 @@ class Order:
 class PackingCheckpoint:
     last_processed_idx: int
     last_item_sku: str
+    packing_slip_id: str | None = None  # Acquired at start, reused on resume
