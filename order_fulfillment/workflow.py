@@ -1,10 +1,13 @@
 from datetime import timedelta
-from temporalio.common import RetryPolicy
+
 from temporalio import workflow
+from temporalio.common import RetryPolicy
+
 from order_fulfillment.activities import (
+    deliver_order,
+    pack_order_items,
     process_payment,
     reserve_inventory,
-    deliver_order,
 )
 from order_fulfillment.shared import Order
 
@@ -37,8 +40,20 @@ class OrderWorkflow:
             args=[order, inventory_down],
             start_to_close_timeout=timedelta(seconds=15),
             # No max attempts for inventory_down - let it retry until service recovers
-            retry_policy=RetryPolicy() if inventory_down else RetryPolicy(maximum_attempts=1),
+            retry_policy=RetryPolicy()
+            if inventory_down
+            else RetryPolicy(maximum_attempts=1),
         )
+
+        # Pack items if any are specified (~5 min for 30 items at 10s each)
+        if order.items_to_pack:
+            await workflow.execute_activity(
+                pack_order_items,
+                order.items_to_pack,
+                start_to_close_timeout=timedelta(minutes=6),
+                heartbeat_timeout=timedelta(seconds=30),
+                retry_policy=RetryPolicy(maximum_attempts=10),
+            )
 
         try:
             await workflow.wait_condition(

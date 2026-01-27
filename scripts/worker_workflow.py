@@ -1,12 +1,9 @@
 import asyncio
 import logging
+
 from temporalio.client import Client
 from temporalio.worker import Worker
-from order_fulfillment.activities import (
-    process_payment,
-    reserve_inventory,
-    deliver_order,
-)
+
 from order_fulfillment.workflow import OrderWorkflow
 
 
@@ -17,8 +14,9 @@ async def main() -> None:
         client,
         task_queue="order-task-queue",
         workflows=[OrderWorkflow],
-        activities=[process_payment, reserve_inventory, deliver_order],
+        activities=[],
     )
+    print("Workflow-only worker started (no activities)")
     await worker.run()
 
 

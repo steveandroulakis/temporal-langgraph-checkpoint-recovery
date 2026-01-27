@@ -2,7 +2,9 @@ import argparse
 import asyncio
 import logging
 import time
+
 from temporalio.client import Client
+
 from order_fulfillment.shared import Order
 from order_fulfillment.workflow import OrderWorkflow
 
@@ -13,11 +15,21 @@ async def main() -> None:
     parser.add_argument(
         "--inventory-down", action="store_true", help="Simulate inventory API downtime"
     )
+    parser.add_argument(
+        "--pack",
+        action="store_true",
+        help="Include 30 items to pack (~5 min activity with heartbeat checkpoints)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
+    items_to_pack = [f"SKU-{i:03d}" for i in range(30)] if args.pack else []
     order = Order(
-        order_id="order-1", item="widget", quantity=1, credit_card_expiry=args.expiry
+        order_id="order-1",
+        item="widget",
+        quantity=1,
+        credit_card_expiry=args.expiry,
+        items_to_pack=items_to_pack,
     )
 
     try:
