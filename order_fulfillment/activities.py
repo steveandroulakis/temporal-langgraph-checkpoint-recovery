@@ -8,6 +8,19 @@ from temporalio.exceptions import ApplicationError
 from order_fulfillment.shared import Order, PackingCheckpoint
 
 
+def _restore_checkpoint(heartbeat_details: list) -> PackingCheckpoint | None:
+    """Restore checkpoint from heartbeat details, handling dict/object conversion."""
+    if not heartbeat_details:
+        return None
+    raw = heartbeat_details[0]
+    return raw if isinstance(raw, PackingCheckpoint) else PackingCheckpoint(**raw)
+
+
+def _generate_packing_slip_id() -> str:
+    """Generate unique packing slip ID (simulates external API call)."""
+    return f"SLIP-{uuid.uuid4().hex[:8].upper()}"
+
+
 @activity.defn
 async def process_payment(order: Order) -> str:
     """Validate payment and simulate processing."""
@@ -62,12 +75,9 @@ async def pack_order_items(items: list[str]) -> str:
     start_idx = 0
     packing_slip_id: str | None = None
 
-    # Resume from checkpoint if available (deserializes as dict with default converter)
-    if info.heartbeat_details:
-        raw = info.heartbeat_details[0]
-        checkpoint = (
-            raw if isinstance(raw, PackingCheckpoint) else PackingCheckpoint(**raw)
-        )
+    # Resume from checkpoint if available
+    checkpoint = _restore_checkpoint(info.heartbeat_details)
+    if checkpoint:
         start_idx = checkpoint.last_processed_idx + 1
         packing_slip_id = checkpoint.packing_slip_id
         activity.logger.info(
@@ -75,9 +85,9 @@ async def pack_order_items(items: list[str]) -> str:
             f"last_item={checkpoint.last_item_sku}, slip_id={packing_slip_id}"
         )
 
-    # Acquire packing slip ID if not resuming (simulates external API call)
+    # Acquire packing slip ID if not resuming
     if not packing_slip_id:
-        packing_slip_id = f"SLIP-{uuid.uuid4().hex[:8].upper()}"
+        packing_slip_id = _generate_packing_slip_id()
         activity.logger.info(f"Acquired new packing slip ID: {packing_slip_id}")
         # Heartbeat immediately to persist the ID before doing any work
         checkpoint = PackingCheckpoint(
