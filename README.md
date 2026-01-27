@@ -160,8 +160,15 @@ uv run scripts/starter_checkpoint_demo.py
 5. Observe "Resuming from checkpoint" - activity continues from last checkpoint
 6. Send approval signal when prompted: `uv run scripts/signal_approve.py <workflow-id>`
 
-### Key Observations
+### Implementation Notes
 
+The `pack_order_items` activity uses a dual heartbeat strategy:
+- **Background heartbeat (every 5s)**: Keeps activity alive if individual items take longer than expected
+- **Immediate heartbeat after each item**: Ensures latest checkpoint is always available for recovery
+
+This handles real-world scenarios where item processing time varies unpredictably.
+
+When running the demo:
 - Activity resumes from `last_processed_idx + 1`, skipping already-packed items
 - `attempt: 2` in logs indicates this is a retry
 - Temporal UI shows `ActivityTaskTimedOut` with `HEARTBEAT` timeout type
