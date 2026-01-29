@@ -1,6 +1,6 @@
 # LangGraph Agent with Temporal Checkpointing
 
-A research agent built with LangGraph running inside Temporal activities with heartbeat checkpointing for crash recovery.
+A research agent built with LangGraph running inside Temporal activities with heartbeat checkpointing for crash recovery. Use this sample as a template for [automatic crash recovery of any agent](docs/adapter-pattern.md), or [plug in your own LangGraph](docs/bring-your-own-graph.md) with minimal code changes.
 
 ## Features
 
@@ -67,6 +67,12 @@ uv run scripts/worker_activity.py
 
 See [Adapter Pattern](docs/adapter-pattern.md) for details on creating custom adapters.
 
+## Bring Your Own LangGraph
+
+Have an existing LangGraph you want to make crash-resilient? See [Bring Your Own Graph](docs/bring-your-own-graph.md) for a step-by-step guide.
+
+**TL;DR:** Modify 3 files (`graph.py`, `shared.py`, `adapters/langgraph.py`) to plug in your graph. The Temporal infrastructure (`runner.py`, `workflow.py`) stays unchanged.
+
 ## Architecture
 
 ```
@@ -107,7 +113,8 @@ langgraph-agent/
 │   ├── test_agent.py
 │   └── test_adapters.py
 ├── docs/
-│   └── adapter-pattern.md    # Adapter pattern documentation
+│   ├── adapter-pattern.md    # Adapter pattern documentation
+│   └── bring-your-own-graph.md  # Guide for integrating your LangGraph
 ├── pyproject.toml
 ├── noxfile.py
 └── README.md
