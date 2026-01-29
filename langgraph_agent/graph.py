@@ -1,12 +1,11 @@
 """LangGraph research agent definition."""
 
 import os
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
-from langgraph.types import Command, interrupt
 from litellm import acompletion
 from typing_extensions import TypedDict
 
@@ -18,9 +17,6 @@ class AgentState(TypedDict):
     messages: Annotated[list[Any], add_messages]
     search_results: str
     analysis: str
-    needs_approval: bool
-    approved: bool
-    approval_feedback: str
     final_report: str
 
 
@@ -72,38 +68,9 @@ async def analyze_node(state: AgentState) -> dict[str, Any]:
     return {"analysis": analysis}
 
 
-def approval_node(state: AgentState) -> Command[Literal["report"]]:
-    """Request human approval via interrupt."""
-    approval_request = {
-        "query": state["query"],
-        "search_results": state["search_results"],
-        "analysis": state["analysis"],
-        "message": "Please review the research and analysis. "
-        "Approve to generate final report.",
-    }
-    response = interrupt(approval_request)
-    return Command(
-        goto="report",
-        update={
-            "approved": response.get("approved", False),
-            "approval_feedback": response.get("feedback", ""),
-        },
-    )
-
-
 async def report_node(state: AgentState) -> dict[str, Any]:
     """Generate final research report."""
     model = _get_model()
-
-    feedback_context = ""
-    if state.get("approval_feedback"):
-        feedback_context = (
-            f"\n\nHuman feedback to incorporate: {state['approval_feedback']}"
-        )
-
-    approval_status = (
-        "approved" if state.get("approved", True) else "not explicitly approved"
-    )
 
     system_msg = (
         "You are a report writer. Create a concise, well-structured research report."
@@ -115,8 +82,6 @@ Research findings:
 
 Analysis:
 {state["analysis"]}
-
-Status: {approval_status}{feedback_context}
 
 Write a final research report with Summary, Key Findings, and Conclusions."""
 
@@ -132,25 +97,17 @@ Write a final research report with Summary, Key Findings, and Conclusions."""
     return {"final_report": final_report}
 
 
-def should_request_approval(state: AgentState) -> Literal["approval", "report"]:
-    """Route based on whether approval is needed."""
-    if state.get("needs_approval", False):
-        return "approval"
-    return "report"
-
-
 def build_graph() -> StateGraph[AgentState]:
     """Build the research agent graph."""
     builder = StateGraph(AgentState)
 
     builder.add_node("search", search_node)
     builder.add_node("analyze", analyze_node)
-    builder.add_node("approval", approval_node)
     builder.add_node("report", report_node)
 
     builder.set_entry_point("search")
     builder.add_edge("search", "analyze")
-    builder.add_conditional_edges("analyze", should_request_approval)
+    builder.add_edge("analyze", "report")
     builder.add_edge("report", END)
 
     return builder

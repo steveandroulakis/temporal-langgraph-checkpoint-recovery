@@ -1,12 +1,11 @@
 # LangGraph Agent with Temporal Checkpointing
 
-A research agent built with LangGraph running inside Temporal activities with heartbeat checkpointing for resilience and human-in-the-loop approval.
+A research agent built with LangGraph running inside Temporal activities with heartbeat checkpointing for crash recovery.
 
 ## Features
 
 - **LangGraph Research Agent**: Multi-step agent with search, analysis, and report generation
 - **Dual Heartbeat Pattern**: Background heartbeats + immediate superstep checkpoints
-- **Human-in-the-Loop**: Optional approval interrupt with Temporal signals
 - **Crash Recovery**: Activity resumes from last checkpoint on worker failure
 - **LLM Flexibility**: Uses litellm with OpenAI or Anthropic
 
@@ -32,19 +31,6 @@ uv run scripts/worker_activity.py
 uv run scripts/starter.py "What is quantum computing?"
 ```
 
-## Human Approval Flow
-
-```bash
-# Start workflow requiring approval
-uv run scripts/starter.py --needs-approval "Write a report on AI safety"
-
-# Workflow pauses after analysis. Send approval:
-uv run scripts/signal_approve.py <workflow-id>
-
-# Or reject with feedback:
-uv run scripts/signal_approve.py <workflow-id> --reject --feedback "Need more sources"
-```
-
 ## Checkpoint Recovery Demo
 
 ```bash
@@ -67,12 +53,12 @@ uv run scripts/inspect_checkpoints.py <thread_id>  # show checkpoint history
 ## Architecture
 
 ```
-Query → [Search] → [Analyze] → [Approval?] → [Report] → Output
-           ↓           ↓           ↓            ↓
-        Heartbeat  Heartbeat  Interrupt    Heartbeat
+Query → [Search] → [Analyze] → [Report] → Output
+           ↓           ↓           ↓
+        Heartbeat  Heartbeat  Heartbeat
 ```
 
-- **Temporal Workflow**: Orchestrates activity execution, handles approval signals
+- **Temporal Workflow**: Orchestrates activity execution
 - **Temporal Activity**: Runs LangGraph with dual heartbeat pattern
 - **LangGraph**: StateGraph with SQLite checkpointer for graph state
 - **litellm**: Unified LLM interface (OpenAI/Anthropic)
@@ -86,13 +72,12 @@ langgraph-agent/
 │   ├── activities.py         # Temporal activity with dual heartbeat
 │   ├── graph.py             # LangGraph StateGraph definition
 │   ├── shared.py            # Data models
-│   └── workflow.py          # Temporal workflow with signal handling
+│   └── workflow.py          # Temporal workflow
 ├── scripts/                  # Executable scripts
 │   ├── worker_workflow.py
 │   ├── worker_activity.py
 │   ├── starter.py
 │   ├── starter_checkpoint_demo.py
-│   ├── signal_approve.py
 │   └── inspect_checkpoints.py
 ├── tests/
 │   └── test_agent.py
@@ -108,7 +93,6 @@ langgraph-agent/
 | Task Queue | `research-agent-queue` |
 | Heartbeat Timeout | 30 seconds |
 | Heartbeat Interval | 5 seconds |
-| Approval Timeout | 30 minutes |
 | Activity Timeout | 10 minutes |
 | Max Retries | 5 |
 

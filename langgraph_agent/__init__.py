@@ -8,14 +8,12 @@ from langgraph_agent.shared import (
     AgentCheckpoint,
     AgentInput,
     AgentOutput,
-    ApprovalResponse,
 )
 
 __all__ = [
     "AgentCheckpoint",
     "AgentInput",
     "AgentOutput",
-    "ApprovalResponse",
 ]
 
 

@@ -16,17 +16,12 @@ async def main() -> None:
     parser.add_argument(
         "query", nargs="?", default="What is quantum computing?", help="Research query"
     )
-    parser.add_argument(
-        "--needs-approval",
-        action="store_true",
-        help="Require human approval before generating final report",
-    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
     console = Console()
 
-    agent_input = AgentInput(query=args.query, needs_approval=args.needs_approval)
+    agent_input = AgentInput(query=args.query)
 
     try:
         client = await Client.connect("localhost:7233")
@@ -39,12 +34,6 @@ async def main() -> None:
         )
         console.print(f"\n[bold green]Started workflow:[/bold green] {workflow_id}")
         console.print(f"[dim]Query: {args.query}[/dim]")
-
-        if args.needs_approval:
-            console.print(
-                f"\n[yellow]Workflow will pause for approval. "
-                f"Run:[/yellow]\n  uv run scripts/signal_approve.py {workflow_id}"
-            )
 
         result = await handle.result()
         console.print(Panel(result, title="Research Report", border_style="green"))

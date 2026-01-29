@@ -1,7 +1,6 @@
 """Shared data models for LangGraph agent."""
 
 from dataclasses import dataclass
-from typing import Any
 
 
 @dataclass
@@ -19,8 +18,6 @@ class AgentInput:
     """Input to the research agent workflow."""
 
     query: str
-    needs_approval: bool = False
-    resume_value: dict[str, Any] | None = None  # Approval response (internal)
 
 
 @dataclass
@@ -30,13 +27,3 @@ class AgentOutput:
     final_report: str
     thread_id: str
     superstep_count: int
-    interrupted: bool = False
-    interrupt_value: Any = None
-
-
-@dataclass
-class ApprovalResponse:
-    """Human approval response for interrupted workflows."""
-
-    approved: bool
-    feedback: str = ""

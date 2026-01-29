@@ -22,7 +22,7 @@ async def main() -> None:
 
     client = await Client.connect("localhost:7233")
     workflow_id = f"checkpoint-demo-{int(time.time())}"
-    agent_input = AgentInput(query=query, needs_approval=False)
+    agent_input = AgentInput(query=query)
     handle = await client.start_workflow(
         ResearchAgentWorkflow.run,
         agent_input,

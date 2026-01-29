@@ -53,17 +53,8 @@ uv run scripts/worker_workflow.py
 # Terminal 2: Activity worker
 uv run scripts/worker_activity.py
 
-# Terminal 3: Start workflow (basic query)
+# Terminal 3: Start workflow
 uv run scripts/starter.py "What is quantum computing?"
-
-# Start workflow with human approval required
-uv run scripts/starter.py --needs-approval "Write a report on AI safety"
-
-# Send approval signal (replace workflow-id with actual ID from starter output)
-uv run scripts/signal_approve.py <workflow-id>
-
-# Send rejection with feedback
-uv run scripts/signal_approve.py <workflow-id> --reject --feedback "Need more sources"
 ```
 
 ### Heartbeat Checkpoint Demo
@@ -90,7 +81,7 @@ This is a LangGraph research agent running inside a Temporal workflow with dual 
 ### Core Components
 
 - **`langgraph_agent/graph.py`**: LangGraph StateGraph definition
-  - Nodes: search → analyze → [approval interrupt] → report
+  - Nodes: search → analyze → report
   - Uses litellm for LLM calls (OpenAI or Anthropic)
   - SQLite checkpointer for graph state persistence
 
@@ -99,43 +90,37 @@ This is a LangGraph research agent running inside a Temporal workflow with dual 
   - Immediate heartbeat after each graph superstep
   - Checkpoint recovery from heartbeat_details
 
-- **`langgraph_agent/workflow.py`**: `ResearchAgentWorkflow` with interrupt handling
-  - Loops on activity execution until not interrupted
-  - Wait for approval signal with 30-minute timeout
-  - Passes resume_value back to activity for interrupt continuation
+- **`langgraph_agent/workflow.py`**: `ResearchAgentWorkflow`
+  - Executes activity with retry policy and heartbeat timeout
 
 - **`langgraph_agent/shared.py`**: Data models
-  - `AgentInput`: query, needs_approval, resume_value
-  - `AgentOutput`: final_report, thread_id, superstep_count, interrupted, interrupt_value
+  - `AgentInput`: query
+  - `AgentOutput`: final_report, thread_id, superstep_count
   - `AgentCheckpoint`: thread_id, checkpoint_id, superstep_count, current_node
   - Note: `thread_id` is derived from `workflow_id` in the activity, not passed via input
 
 - **`scripts/`**: Executable scripts for running the application:
   - `worker_workflow.py`: Workflow worker
   - `worker_activity.py`: Activity worker (can be killed for checkpoint demo)
-  - `starter.py`: Starts workflow with query and optional --needs-approval
+  - `starter.py`: Starts workflow with query
   - `starter_checkpoint_demo.py`: Interactive checkpoint recovery demo
-  - `signal_approve.py`: Sends approval/rejection signal
   - `inspect_checkpoints.py`: Inspect LangGraph checkpoints in SQLite
 
 ### Agent Flow
 1. **Search**: Gathers information about query (LLM call)
 2. **Analyze**: Synthesizes findings into insights (LLM call)
-3. **Approval** (optional): LangGraph interrupt, waits for Temporal signal
-4. **Report**: Generates final research report (LLM call)
+3. **Report**: Generates final research report (LLM call)
 
 ### Testing Scenarios
 - **Happy path**: `starter.py "topic"` - runs to completion
-- **Human-in-the-loop**: `starter.py --needs-approval "topic"` - pauses for signal
 - **Checkpoint recovery**: `starter_checkpoint_demo.py` - kill worker mid-execution
 
 ### Configuration
 - **Task Queue**: `research-agent-queue`
 - **Temporal Server**: `localhost:7233` (default dev server)
-- **LLM**: Auto-selects based on env (ANTHROPIC_API_KEY → Claude, else → GPT-4o-mini)
+- **LLM**: Auto-selects based on env (ANTHROPIC_API_KEY → Claude, else → GPT-4)
 - **Heartbeat Timeout**: 30 seconds
 - **Background Heartbeat Interval**: 5 seconds
-- **Approval Timeout**: 30 minutes
 - **Start-to-Close Timeout**: 10 minutes
 - **Retry Policy**: 5 attempts, 2x backoff
 
