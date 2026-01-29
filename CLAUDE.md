@@ -124,6 +124,10 @@ This is a LangGraph research agent running inside a Temporal workflow with dual 
 - **Start-to-Close Timeout**: 10 minutes
 - **Retry Policy**: 5 attempts, 2x backoff
 
+### SQLite Checkpointer Limitation
+
+This demo uses SQLite for LangGraph checkpointing, requiring all activity workers to share the same filesystem. For production with distributed workers, use a shared database like PostgreSQL via LangGraph's `PostgresSaver`.
+
 ### Temporal Sandbox Pattern
 
 This project follows Temporal Python SDK sandbox best practices:

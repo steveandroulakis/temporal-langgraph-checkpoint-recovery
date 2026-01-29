@@ -96,6 +96,8 @@ langgraph-agent/
 | Activity Timeout | 10 minutes |
 | Max Retries | 5 |
 
+> **Note:** This demo uses SQLite for LangGraph checkpointing, which requires all activity workers to share the same filesystem. For production, use a shared database like PostgreSQL via LangGraph's [PostgresSaver](https://langchain-ai.github.io/langgraph/reference/checkpoints/#langgraph.checkpoint.postgres.PostgresSaver).
+
 ## Development
 
 ```bash
