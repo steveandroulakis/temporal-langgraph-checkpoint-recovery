@@ -9,7 +9,7 @@ from temporalio.worker.workflow_sandbox import (
     SandboxRestrictions,
 )
 
-from langgraph_agent.workflow import ResearchAgentWorkflow
+from langgraph_agent.workflow import ResearchAgentWorkflow, SleepingAgentWorkflow
 
 # Third-party modules used by activities that should be passed through
 # to avoid sandbox reloading overhead (per Temporal best practices)
@@ -40,7 +40,7 @@ async def main() -> None:
     worker = Worker(
         client,
         task_queue="research-agent-queue",
-        workflows=[ResearchAgentWorkflow],
+        workflows=[ResearchAgentWorkflow, SleepingAgentWorkflow],
         activities=[],
         workflow_runner=SandboxedWorkflowRunner(restrictions=restrictions),
     )

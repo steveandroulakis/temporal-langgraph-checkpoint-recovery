@@ -70,13 +70,35 @@ uv run scripts/worker_activity.py
 # Activity resumes from checkpoint, completes
 
 # Inspect LangGraph checkpoints in SQLite (thread_id = workflow_id)
-uv run scripts/inspect_checkpoints.py                  # list all threads
-uv run scripts/inspect_checkpoints.py <workflow_id>   # show checkpoint history
+uv run scripts/inspect_langgraph_checkpoints.py                  # list threads
+uv run scripts/inspect_langgraph_checkpoints.py <workflow_id> -d # detailed history
 ```
 
 ## Architecture Overview
 
 This is a LangGraph research agent running inside a Temporal workflow with dual heartbeat checkpointing for resilience.
+
+### Adapter Pattern
+
+The codebase uses an adapter pattern to separate Temporal concerns from agent logic:
+
+- **`langgraph_agent/adapters/base.py`**: `AgentAdapter` ABC
+  - `supports_checkpointing`: bool property
+  - `setup(thread_id, checkpoint)`: Initialize adapter
+  - `run(input)`: AsyncIterator yielding `StepResult`
+  - `get_final_output()`: Return final result
+
+- **`langgraph_agent/runner.py`**: Generic Temporal runner
+  - Handles heartbeating, checkpoint restoration, cleanup
+  - Works with any `AgentAdapter` implementation
+
+- **`langgraph_agent/adapters/langgraph.py`**: `LangGraphAdapter`
+  - Checkpointing adapter for LangGraph research agent
+
+- **`langgraph_agent/adapters/sleeping.py`**: `SleepingAdapter`
+  - Non-checkpointing demo adapter
+
+See [docs/adapter-pattern.md](docs/adapter-pattern.md) for creating custom adapters.
 
 ### Core Components
 
@@ -85,26 +107,28 @@ This is a LangGraph research agent running inside a Temporal workflow with dual 
   - Uses litellm for LLM calls (OpenAI or Anthropic)
   - SQLite checkpointer for graph state persistence
 
-- **`langgraph_agent/activities.py`**: Temporal activity with dual heartbeat pattern
-  - Background heartbeat loop (5s interval)
-  - Immediate heartbeat after each graph superstep
-  - Checkpoint recovery from heartbeat_details
+- **`langgraph_agent/activities.py`**: Thin activity wrappers
+  - `run_langgraph_agent()`: Uses LangGraphAdapter
+  - `run_sleeping_agent()`: Uses SleepingAdapter
 
-- **`langgraph_agent/workflow.py`**: `ResearchAgentWorkflow`
-  - Executes activity with retry policy and heartbeat timeout
+- **`langgraph_agent/workflow.py`**: Temporal workflows
+  - `ResearchAgentWorkflow`: LangGraph research agent
+  - `SleepingAgentWorkflow`: Non-checkpointing demo
 
 - **`langgraph_agent/shared.py`**: Data models
-  - `AgentInput`: query
-  - `AgentOutput`: final_report, thread_id, superstep_count
-  - `AgentCheckpoint`: thread_id, checkpoint_id, superstep_count, current_node
-  - Note: `thread_id` is derived from `workflow_id` in the activity, not passed via input
+  - `AgentInput`, `AgentOutput`: LangGraph agent I/O
+  - `SleepingInput`, `SleepingOutput`: Sleeping agent I/O
+  - `AgentCheckpoint`: Checkpoint state
+  - `StepResult`: Yielded by adapters for progress
+  - Note: `thread_id` is derived from `workflow_id` in the runner
 
-- **`scripts/`**: Executable scripts for running the application:
+- **`scripts/`**: Executable scripts:
   - `worker_workflow.py`: Workflow worker
   - `worker_activity.py`: Activity worker (can be killed for checkpoint demo)
-  - `starter.py`: Starts workflow with query
-  - `starter_checkpoint_demo.py`: Interactive checkpoint recovery demo
-  - `inspect_checkpoints.py`: Inspect LangGraph checkpoints in SQLite
+  - `starter.py`: Starts LangGraph workflow
+  - `starter_checkpoint_demo.py`: LangGraph checkpoint recovery demo
+  - `starter_sleeping.py`: Sleeping agent demo (no checkpointing)
+  - `inspect_langgraph_checkpoints.py`: Inspect LangGraph checkpoints in SQLite
 
 ### Agent Flow
 1. **Search**: Gathers information about query (LLM call)
@@ -112,8 +136,9 @@ This is a LangGraph research agent running inside a Temporal workflow with dual 
 3. **Report**: Generates final research report (LLM call)
 
 ### Testing Scenarios
-- **Happy path**: `starter.py "topic"` - runs to completion
-- **Checkpoint recovery**: `starter_checkpoint_demo.py` - kill worker mid-execution
+- **Happy path**: `starter.py "topic"` - LangGraph agent runs to completion
+- **Checkpoint recovery**: `starter_checkpoint_demo.py` - kill worker mid-execution, resumes from checkpoint
+- **No checkpoint**: `starter_sleeping.py` - kill worker mid-execution, restarts from beginning
 
 ### Configuration
 - **Task Queue**: `research-agent-queue`
@@ -137,7 +162,7 @@ This project follows Temporal Python SDK sandbox best practices:
 2. **Activity imports via `imports_passed_through()`** - Heavy deps (langgraph, litellm) are passed through to avoid sandbox reloading:
    ```python
    with workflow.unsafe.imports_passed_through():
-       from langgraph_agent.activities import run_langgraph_agent
+       from langgraph_agent.activities import run_langgraph_agent, run_sleeping_agent
    ```
 
 3. **Worker-level passthrough config** - Third-party modules configured at worker creation:

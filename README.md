@@ -44,11 +44,28 @@ uv run scripts/starter_checkpoint_demo.py
 uv run scripts/worker_activity.py
 
 # Verify checkpoints were saved
-uv run scripts/inspect_checkpoints.py              # list all threads
-uv run scripts/inspect_checkpoints.py <thread_id>  # show checkpoint history
+uv run scripts/inspect_langgraph_checkpoints.py                 # list threads
+uv run scripts/inspect_langgraph_checkpoints.py <thread_id> -d  # detailed history
 ```
 
 **Finding thread_id:** The demo script prints it, or get it from Temporal heartbeat details via UI/CLI/API (e.g., `temporal workflow describe -w <workflow-id>`).
+
+## Sleeping Agent Demo (Non-Checkpointing)
+
+Demonstrates behavior when an agent doesn't support checkpointing:
+
+```bash
+# Start sleeping agent (30s × 4 steps = 2 min total)
+uv run scripts/starter_sleeping.py
+
+# After 1-2 steps, kill activity worker (Ctrl+C)
+# Wait ~15 seconds for heartbeat timeout
+
+# Restart activity worker - agent restarts from beginning (no checkpoint)
+uv run scripts/worker_activity.py
+```
+
+See [Adapter Pattern](docs/adapter-pattern.md) for details on creating custom adapters.
 
 ## Architecture
 
@@ -69,18 +86,28 @@ Query → [Search] → [Analyze] → [Report] → Output
 langgraph-agent/
 ├── langgraph_agent/          # Main package
 │   ├── __init__.py
-│   ├── activities.py         # Temporal activity with dual heartbeat
-│   ├── graph.py             # LangGraph StateGraph definition
-│   ├── shared.py            # Data models
-│   └── workflow.py          # Temporal workflow
+│   ├── activities.py         # Thin activity wrappers using adapters
+│   ├── runner.py             # Generic Temporal runner for adapters
+│   ├── graph.py              # LangGraph StateGraph definition
+│   ├── shared.py             # Data models
+│   ├── workflow.py           # Temporal workflows
+│   └── adapters/             # Agent adapters
+│       ├── __init__.py
+│       ├── base.py           # AgentAdapter ABC
+│       ├── langgraph.py      # LangGraph adapter (checkpointing)
+│       └── sleeping.py       # Sleeping adapter (no checkpointing)
 ├── scripts/                  # Executable scripts
 │   ├── worker_workflow.py
 │   ├── worker_activity.py
 │   ├── starter.py
 │   ├── starter_checkpoint_demo.py
-│   └── inspect_checkpoints.py
+│   ├── starter_sleeping.py              # Sleeping agent demo
+│   └── inspect_langgraph_checkpoints.py # Inspect LangGraph checkpoints
 ├── tests/
-│   └── test_agent.py
+│   ├── test_agent.py
+│   └── test_adapters.py
+├── docs/
+│   └── adapter-pattern.md    # Adapter pattern documentation
 ├── pyproject.toml
 ├── noxfile.py
 └── README.md

@@ -31,7 +31,7 @@ async def main() -> None:
     )
 
     console.print(f"\n[bold green]Started workflow:[/bold green] {workflow_id}")
-    console.print(f"[dim](workflow_id is also the LangGraph thread_id)[/dim]")
+    console.print("[dim](workflow_id is also the LangGraph thread_id)[/dim]")
     console.print(f"[dim]Query: {query}[/dim]")
     console.print(
         Panel.fit(
@@ -53,8 +53,8 @@ async def main() -> None:
 6. Workflow completes with research report
 
 [bold]VALIDATE CHECKPOINTS:[/bold]
-   [green]uv run scripts/inspect_checkpoints.py[/green]
-   [green]uv run scripts/inspect_checkpoints.py {workflow_id}[/green]
+   [green]uv run scripts/inspect_langgraph_checkpoints.py[/green]
+   [green]uv run scripts/inspect_langgraph_checkpoints.py {workflow_id} -d[/green]
 """,
             title="Demo Steps",
             border_style="yellow",

@@ -27,3 +27,28 @@ class AgentOutput:
     final_report: str
     thread_id: str
     superstep_count: int
+
+
+@dataclass
+class StepResult:
+    """Result from a single adapter step."""
+
+    step_number: int
+    step_name: str
+    checkpoint_id: str | None = None
+
+
+@dataclass
+class SleepingInput:
+    """Input for the sleeping agent."""
+
+    sleep_seconds: float = 30.0
+    num_steps: int = 4
+
+
+@dataclass
+class SleepingOutput:
+    """Output from the sleeping agent."""
+
+    steps_completed: int
+    total_sleep_time: float

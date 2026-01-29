@@ -5,7 +5,7 @@ from rich.logging import RichHandler
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from langgraph_agent.activities import run_langgraph_agent
+from langgraph_agent.activities import run_langgraph_agent, run_sleeping_agent
 
 
 async def main() -> None:
@@ -17,9 +17,9 @@ async def main() -> None:
         client,
         task_queue="research-agent-queue",
         workflows=[],
-        activities=[run_langgraph_agent],
+        activities=[run_langgraph_agent, run_sleeping_agent],
     )
-    print("Activity-only worker started (killable for checkpoint demo)")
+    print("Activity worker started (killable for checkpoint demo)")
     await worker.run()
 
 
