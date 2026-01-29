@@ -3,13 +3,17 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "order-fulfillment"
+name = "langgraph-agent"
 version = "0.1.0"
-description = "Temporal order fulfillment sample application"
+description = "LangGraph research agent with Temporal checkpointing"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "temporalio>=1.17.0",
+    "langgraph>=0.2.0",
+    "langgraph-checkpoint>=1.0.0",
+    "langgraph-checkpoint-sqlite>=1.0.0",
+    "litellm>=1.0.0",
     "rich>=13.0.0",
 ]
 

@@ -2,64 +2,67 @@ import asyncio
 import logging
 import time
 
+from rich.console import Console
+from rich.panel import Panel
 from temporalio.client import Client
 
-from order_fulfillment.shared import Order
-from order_fulfillment.workflow import OrderWorkflow
+from langgraph_agent.shared import AgentInput
+from langgraph_agent.workflow import ResearchAgentWorkflow
 
 
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
+    console = Console()
 
-    # Create order with 10 items to pack (20s total work at 2s per item)
-    items_to_pack = [f"SKU-{i:03d}" for i in range(1, 11)]
-    order = Order(
-        order_id="checkpoint-demo",
-        item="widget",
-        quantity=1,
-        credit_card_expiry="12/30",
-        items_to_pack=items_to_pack,
+    # Query that requires multiple LLM calls
+    query = (
+        "Tell me where to find marsupials in Australia, and " +
+        "detail the endangered species among them."
     )
 
     client = await Client.connect("localhost:7233")
-    workflow_id = f"order-{order.order_id}-{int(time.time())}"
+    workflow_id = f"checkpoint-demo-{int(time.time())}"
+    agent_input = AgentInput(query=query, needs_approval=False)
     handle = await client.start_workflow(
-        OrderWorkflow.run,
-        args=[order, False],
+        ResearchAgentWorkflow.run,
+        agent_input,
         id=workflow_id,
-        task_queue="order-task-queue",
+        task_queue="research-agent-queue",
     )
 
-    print(f"\nStarted workflow: {workflow_id}")
-    print(f"Items to pack: {len(items_to_pack)}")
-    print("\n" + "=" * 60)
-    print("CHECKPOINT DEMO INSTRUCTIONS")
-    print("=" * 60)
-    print(
-        """
-1. Watch Terminal 2 (activity worker) for "Packed SKU-XXX" messages
+    console.print(f"\n[bold green]Started workflow:[/bold green] {workflow_id}")
+    console.print(f"[dim](workflow_id is also the LangGraph thread_id)[/dim]")
+    console.print(f"[dim]Query: {query}[/dim]")
+    console.print(
+        Panel.fit(
+            f"""[bold cyan]CHECKPOINT DEMO INSTRUCTIONS[/bold cyan]
 
-2. After seeing "Checkpoint saved at idx=X", kill activity worker (Ctrl+C)
+1. Watch Terminal 2 (activity worker) for superstep progress
 
-3. Wait ~15 seconds (heartbeat timeout will trigger retry)
+2. After seeing "Superstep 1" or "Superstep 2", kill activity worker (Ctrl+C)
+
+3. Wait ~15 seconds (heartbeat timeout triggers retry)
 
 4. Restart activity worker:
-   uv run scripts/worker_activity.py
+   [green]uv run scripts/worker_activity.py[/green]
 
-5. Observe: "Resuming from checkpoint idx=X" in logs
+5. Observe: "Resuming from checkpoint" in logs
+   - Agent resumes from last saved superstep
+   - LangGraph SQLite checkpoint restores graph state
 
-6. After packing completes, approve within 30 seconds:
-   uv run scripts/signal_approve.py """
-        + workflow_id
-        + """
+6. Workflow completes with research report
 
-7. Workflow completes with "Order fulfilled"
-"""
+[bold]VALIDATE CHECKPOINTS:[/bold]
+   [green]uv run scripts/inspect_checkpoints.py[/green]
+   [green]uv run scripts/inspect_checkpoints.py {workflow_id}[/green]
+""",
+            title="Demo Steps",
+            border_style="yellow",
+        )
     )
-    print("=" * 60)
 
     result = await handle.result()
-    print(f"\nWorkflow result: {result}")
+    console.print(Panel(result, title="Research Report", border_style="green"))
 
 
 if __name__ == "__main__":

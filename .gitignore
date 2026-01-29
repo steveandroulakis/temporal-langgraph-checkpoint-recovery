@@ -169,3 +169,6 @@ temporal-sqlite.db
 # Application specific
 worker.pid
 *.pid
+
+# LangGraph checkpoints
+langgraph_checkpoints.db*

@@ -8,6 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # Install dependencies
 uv sync --all-groups
+
+# Set LLM API key (choose one)
+export OPENAI_API_KEY=sk-...
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ### Testing and Quality Assurance
@@ -20,7 +24,7 @@ uv run nox -s tests -p 3.11
 uv run nox -s tests -p 3.12
 
 # Run single test file
-uv run pytest tests/test_shared.py -v
+uv run pytest tests/test_agent.py -v
 
 # Run linting
 uv run nox -s lint
@@ -49,20 +53,17 @@ uv run scripts/worker_workflow.py
 # Terminal 2: Activity worker
 uv run scripts/worker_activity.py
 
-# Terminal 3: Start workflow (basic order)
-uv run scripts/starter.py
+# Terminal 3: Start workflow (basic query)
+uv run scripts/starter.py "What is quantum computing?"
 
-# Start workflow with packing (heartbeat checkpoints)
-uv run scripts/starter.py --pack
+# Start workflow with human approval required
+uv run scripts/starter.py --needs-approval "Write a report on AI safety"
 
-# Start workflow with inventory down simulation
-uv run scripts/starter.py --inventory-down
-
-# Start workflow with invalid credit card
-uv run scripts/starter.py --expiry 12/23
-
-# Send approval signal within 30 seconds (replace workflow-id with actual ID from starter output)
+# Send approval signal (replace workflow-id with actual ID from starter output)
 uv run scripts/signal_approve.py <workflow-id>
+
+# Send rejection with feedback
+uv run scripts/signal_approve.py <workflow-id> --reject --feedback "Need more sources"
 ```
 
 ### Heartbeat Checkpoint Demo
@@ -70,66 +71,92 @@ uv run scripts/signal_approve.py <workflow-id>
 # With both workers running, start checkpoint demo
 uv run scripts/starter_checkpoint_demo.py
 
-# Kill activity worker (Ctrl+C in Terminal 2), wait 30s, restart it
+# After seeing superstep progress, kill activity worker (Ctrl+C in Terminal 2)
+# Wait ~15 seconds for heartbeat timeout
+# Restart activity worker
 uv run scripts/worker_activity.py
 
-# After packing completes, approve:
-uv run scripts/signal_approve.py <workflow-id>
+# Activity resumes from checkpoint, completes
+
+# Inspect LangGraph checkpoints in SQLite (thread_id = workflow_id)
+uv run scripts/inspect_checkpoints.py                  # list all threads
+uv run scripts/inspect_checkpoints.py <workflow_id>   # show checkpoint history
 ```
 
 ## Architecture Overview
 
-This is a Temporal workflow application demonstrating order fulfillment with four sequential activities, human-in-the-loop approval, and heartbeat checkpointing for long-running activities.
+This is a LangGraph research agent running inside a Temporal workflow with dual heartbeat checkpointing for resilience.
 
 ### Core Components
 
-- **`order_fulfillment/workflow.py`**: Contains `OrderWorkflow` class implementing the main business logic
-  - Sequential execution: payment → inventory → packing (optional) → approval wait → delivery
-  - Handles approval signal and timeout (30s expiry)
-  - Configurable retry policies and timeouts
+- **`langgraph_agent/graph.py`**: LangGraph StateGraph definition
+  - Nodes: search → analyze → [approval interrupt] → report
+  - Uses litellm for LLM calls (OpenAI or Anthropic)
+  - SQLite checkpointer for graph state persistence
 
-- **`order_fulfillment/activities.py`**: Four Temporal activities:
-  - `process_payment`: Validates credit card expiry date
-  - `reserve_inventory`: Reserves inventory with optional downtime simulation
-  - `pack_order_items`: Long-running packing with heartbeat checkpoints; resumes from checkpoint on worker failure
-  - `deliver_order`: Final delivery simulation
+- **`langgraph_agent/activities.py`**: Temporal activity with dual heartbeat pattern
+  - Background heartbeat loop (5s interval)
+  - Immediate heartbeat after each graph superstep
+  - Checkpoint recovery from heartbeat_details
 
-- **`order_fulfillment/shared.py`**: Data models
-  - `Order`: Order details (order_id, item, quantity, credit_card_expiry, items_to_pack)
-  - `PackingCheckpoint`: Checkpoint state (last_processed_idx, last_item_sku)
+- **`langgraph_agent/workflow.py`**: `ResearchAgentWorkflow` with interrupt handling
+  - Loops on activity execution until not interrupted
+  - Wait for approval signal with 30-minute timeout
+  - Passes resume_value back to activity for interrupt continuation
+
+- **`langgraph_agent/shared.py`**: Data models
+  - `AgentInput`: query, needs_approval, resume_value
+  - `AgentOutput`: final_report, thread_id, superstep_count, interrupted, interrupt_value
+  - `AgentCheckpoint`: thread_id, checkpoint_id, superstep_count, current_node
+  - Note: `thread_id` is derived from `workflow_id` in the activity, not passed via input
 
 - **`scripts/`**: Executable scripts for running the application:
   - `worker_workflow.py`: Workflow worker
-  - `worker_activity.py`: Activity worker (can be killed independently for checkpoint demo)
-  - `starter.py`: Starts workflow execution with configurable scenarios
-  - `starter_checkpoint_demo.py`: Starts checkpoint demo workflow
-  - `signal_approve.py`: Sends approval signal to waiting workflow
+  - `worker_activity.py`: Activity worker (can be killed for checkpoint demo)
+  - `starter.py`: Starts workflow with query and optional --needs-approval
+  - `starter_checkpoint_demo.py`: Interactive checkpoint recovery demo
+  - `signal_approve.py`: Sends approval/rejection signal
+  - `inspect_checkpoints.py`: Inspect LangGraph checkpoints in SQLite
 
-### Workflow Pattern
-1. **Payment Processing**: Validates credit card, fails on expired cards
-2. **Inventory Reservation**: Can be configured to simulate progressive API downtime
-3. **Packing** (optional): Long-running activity with heartbeat checkpointing; resumes from last checkpoint on retry
-4. **Approval Wait**: Workflow pauses for human approval signal (30s timeout)
-5. **Order Delivery**: Final fulfillment step
+### Agent Flow
+1. **Search**: Gathers information about query (LLM call)
+2. **Analyze**: Synthesizes findings into insights (LLM call)
+3. **Approval** (optional): LangGraph interrupt, waits for Temporal signal
+4. **Report**: Generates final research report (LLM call)
 
 ### Testing Scenarios
-- **Happy path**: Normal order flow with approval within 30 seconds
-- **Progressive API downtime**: Use `--inventory-down` flag
-  - First 4 attempts fail with 10-second delays each
-  - 5th attempt succeeds, demonstrating Temporal's retry resilience
-- **Invalid credit card**: Use `--expiry 12/23` or past dates
-- **Order expiration**: Don't send approval signal within 30 seconds
-- **Workflow bug**: Uncomment `RuntimeError` in workflow.py to simulate workflow failures
-- **Heartbeat checkpointing**: Use `starter_checkpoint_demo.py`
-  - Kill activity worker mid-pack, wait 30s for heartbeat timeout, restart
-  - Activity resumes from last checkpoint, skipping already-packed items
+- **Happy path**: `starter.py "topic"` - runs to completion
+- **Human-in-the-loop**: `starter.py --needs-approval "topic"` - pauses for signal
+- **Checkpoint recovery**: `starter_checkpoint_demo.py` - kill worker mid-execution
 
 ### Configuration
-- **Task Queue**: `order-task-queue`
+- **Task Queue**: `research-agent-queue`
 - **Temporal Server**: `localhost:7233` (default dev server)
-- **Python Version**: 3.11+ required
-- **Type Checking**: Strict mypy configuration enabled
-- **Code Quality**: Ruff for linting and formatting
-- **Heartbeat Timeout**: 30 seconds (pack_order_items activity)
-- **Background Heartbeat Interval**: 5 seconds (keeps activity alive during long item processing)
-- **Checkpoint Update**: Immediate after each item completes
+- **LLM**: Auto-selects based on env (ANTHROPIC_API_KEY → Claude, else → GPT-4o-mini)
+- **Heartbeat Timeout**: 30 seconds
+- **Background Heartbeat Interval**: 5 seconds
+- **Approval Timeout**: 30 minutes
+- **Start-to-Close Timeout**: 10 minutes
+- **Retry Policy**: 5 attempts, 2x backoff
+
+### Temporal Sandbox Pattern
+
+This project follows Temporal Python SDK sandbox best practices:
+
+1. **Dataclasses imported directly** in workflow - `shared.py` contains only pure dataclasses (deterministic, side-effect-free)
+
+2. **Activity imports via `imports_passed_through()`** - Heavy deps (langgraph, litellm) are passed through to avoid sandbox reloading:
+   ```python
+   with workflow.unsafe.imports_passed_through():
+       from langgraph_agent.activities import run_langgraph_agent
+   ```
+
+3. **Worker-level passthrough config** - Third-party modules configured at worker creation:
+   ```python
+   restrictions = SandboxRestrictions.default.with_passthrough_modules(
+       "langgraph", "litellm", "pydantic", ...
+   )
+   Worker(..., workflow_runner=SandboxedWorkflowRunner(restrictions=restrictions))
+   ```
+
+See [Temporal Python SDK Sandbox docs](https://docs.temporal.io/develop/python/python-sdk-sandbox) for details.

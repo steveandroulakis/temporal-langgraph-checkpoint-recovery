@@ -35,7 +35,7 @@ def format_check(session: nox.Session) -> None:
 def typecheck(session: nox.Session) -> None:
     """Run mypy for type checking."""
     session.install("-e", ".[dev]")
-    session.run("mypy", "order_fulfillment/", "scripts/")
+    session.run("mypy", "langgraph_agent/", "scripts/")
 
 
 @nox.session
@@ -44,5 +44,5 @@ def pre_commit(session: nox.Session) -> None:
     session.install("-e", ".[dev]")
     session.run("ruff", "check", ".")
     session.run("ruff", "format", "--check", ".")
-    session.run("mypy", "order_fulfillment/", "scripts/")
+    session.run("mypy", "langgraph_agent/", "scripts/")
     session.run("pytest", "tests/", "-v")

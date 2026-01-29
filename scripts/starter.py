@@ -3,47 +3,51 @@ import asyncio
 import logging
 import time
 
+from rich.console import Console
+from rich.panel import Panel
 from temporalio.client import Client
 
-from order_fulfillment.shared import Order
-from order_fulfillment.workflow import OrderWorkflow
+from langgraph_agent.shared import AgentInput
+from langgraph_agent.workflow import ResearchAgentWorkflow
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Start an order workflow")
-    parser.add_argument("--expiry", default="12/30", help="Credit card expiry MM/YY")
+    parser = argparse.ArgumentParser(description="Start a research agent workflow")
     parser.add_argument(
-        "--inventory-down", action="store_true", help="Simulate inventory API downtime"
+        "query", nargs="?", default="What is quantum computing?", help="Research query"
     )
     parser.add_argument(
-        "--pack",
+        "--needs-approval",
         action="store_true",
-        help="Include 30 items to pack (~5 min activity with heartbeat checkpoints)",
+        help="Require human approval before generating final report",
     )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    items_to_pack = [f"SKU-{i:03d}" for i in range(30)] if args.pack else []
-    order = Order(
-        order_id="order-1",
-        item="widget",
-        quantity=1,
-        credit_card_expiry=args.expiry,
-        items_to_pack=items_to_pack,
-    )
+    console = Console()
+
+    agent_input = AgentInput(query=args.query, needs_approval=args.needs_approval)
 
     try:
         client = await Client.connect("localhost:7233")
-        workflow_id = f"order-{order.order_id}-{int(time.time())}"
+        workflow_id = f"research-{int(time.time())}"
         handle = await client.start_workflow(
-            OrderWorkflow.run,
-            args=[order, args.inventory_down],
+            ResearchAgentWorkflow.run,
+            agent_input,
             id=workflow_id,
-            task_queue="order-task-queue",
+            task_queue="research-agent-queue",
         )
-        print(f"Started workflow with ID {workflow_id}")
+        console.print(f"\n[bold green]Started workflow:[/bold green] {workflow_id}")
+        console.print(f"[dim]Query: {args.query}[/dim]")
+
+        if args.needs_approval:
+            console.print(
+                f"\n[yellow]Workflow will pause for approval. "
+                f"Run:[/yellow]\n  uv run scripts/signal_approve.py {workflow_id}"
+            )
+
         result = await handle.result()
-        print(f"Result: {result}")
+        console.print(Panel(result, title="Research Report", border_style="green"))
     except Exception as err:
         logging.error("Workflow execution failed: %s", err)
         raise SystemExit(1) from err
